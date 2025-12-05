@@ -8,15 +8,12 @@ from math import radians, sin, cos, sqrt, atan2
 # --- Configuration ---
 SONDE_API_URL = "https://api.v2.sondehub.org/sondes"
 PREDICTION_API_URL = "https://api.v2.sondehub.org/predictions?vehicles="
-# Webhook for sondes currently in the radius
-DISCORD_IN_RADIUS_WEBHOOK_URL = os.getenv("DISCORD_IN_RADIUS_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1437914343671988407/uv5D1PSAGRfzLA0hh-nj-9Qfu638U4szfUSi_RTIlJLIzY075HwXXV1B3l0JXWBS47Mp")
 # Webhook for predicted landings in the radius
 DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1437914417894522904/ORMPEbaV3evz4AtsjlrckT3VbAhYJGuf_vV7aBPMuyUP9J3U63tKktCgbr-zFoJplfF1")
 
 # User location and radius
 USER_LAT = float(os.getenv("USER_LAT", "60.921800"))
 USER_LON = float(os.getenv("USER_LON", "25.66003"))
-ALERT_RADIUS_KM = int(os.getenv("ALERT_RADIUS_KM", "100"))
 LANDING_ALERT_RADIUS_KM = int(os.getenv("LANDING_ALERT_RADIUS_KM", "50"))
 USER_LOCATION = {"lat": USER_LAT, "lon": USER_LON}
 
@@ -47,7 +44,7 @@ def save_alert_state(sondes_alerted, landings_alerted):
 sondes_alerted, landings_alerted = load_alert_state()
 
 # --- Core Functions ---
-def send_discord_alert(webhook_url, embed):
+def send_discord_alert(webhook_url, embed, content=None):
     """Sends a styled message with an embed to a Discord webhook."""
     if "YOUR_WEBHOOK_URL" in webhook_url:
         print(f"Webhook URL not configured. Printing alert to console for webhook: {webhook_url}")
@@ -55,6 +52,8 @@ def send_discord_alert(webhook_url, embed):
         return
 
     payload = {"embeds": [embed]}
+    if content:
+        payload["content"] = content
     headers = {"Content-Type": "application/json"}
     try:
         response = requests.post(webhook_url, data=json.dumps(payload), headers=headers, timeout=10)
@@ -83,29 +82,12 @@ def check_sonde_positions_and_predictions():
         sondes = response.json()
         serials_to_check = []
 
-        # Check for unrecovered sondes in the radius
+        # Check for unrecovered sondes
         for serial, sonde_data in sondes.items():
             if not serial or sonde_data.get("recovered", 0) != 0:
                 continue
 
             serials_to_check.append(serial)
-            if "lat" in sonde_data and "lon" in sonde_data and serial not in sondes_alerted:
-                distance = haversine(USER_LOCATION["lat"], USER_LOCATION["lon"], sonde_data["lat"], sonde_data["lon"])
-                if distance <= ALERT_RADIUS_KM:
-                    embed = {
-                        "title": "Sonde In Radius Alert",
-                        "description": f"Sonde `{serial}` is **{distance:.2f} km** away (within the {ALERT_RADIUS_KM} km radius).",
-                        "color": 15158332,  # Red
-                        "fields": [
-                            {"name": "Serial", "value": serial, "inline": True},
-                            {"name": "Altitude", "value": f"{sonde_data.get('alt', 'N/A')} m", "inline": True},
-                            {"name": "Position", "value": f"{sonde_data['lat']:.4f}, {sonde_data['lon']:.4f}", "inline": False},
-                            {"name": "Tracker Link", "value": f"[View on SondeHub](https://sondehub.org/{serial})", "inline": False}
-                        ],
-                        "footer": {"text": f"Alert generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"}
-                    }
-                    send_discord_alert(DISCORD_IN_RADIUS_WEBHOOK_URL, embed)
-                    sondes_alerted.add(serial)
 
         # Check for landing predictions
         if serials_to_check:
@@ -136,7 +118,7 @@ def check_sonde_positions_and_predictions():
                                 ],
                                 "footer": {"text": f"Alert generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"}
                             }
-                            send_discord_alert(DISCORD_LANDING_WEBHOOK_URL, embed)
+                            send_discord_alert(DISCORD_LANDING_WEBHOOK_URL, embed, content=f"<@&1446621625742004264>")
                             landings_alerted.add(vehicle)
 
     except requests.exceptions.RequestException as e:
@@ -146,11 +128,31 @@ def check_sonde_positions_and_predictions():
     finally:
         save_alert_state(sondes_alerted, landings_alerted)
 
+def get_sleep_duration():
+    """Determines the sleep duration based on the current UTC time."""
+    now_utc = datetime.utcnow()
+    minute = now_utc.minute
+    hour = now_utc.hour
+
+    # Check for windows around 00:00, 06:00, and 12:00 UTC
+    if (hour == 23 and minute >= 30) or (hour == 0 and minute < 30):  # 23:30 - 00:30
+        return 300  # 5 minutes
+    if (hour == 5 and minute >= 30) or (hour == 6 and minute < 30):   # 05:30 - 06:30
+        return 300  # 5 minutes
+    if (hour == 11 and minute >= 30) or (hour == 12 and minute < 30): # 11:30 - 12:30
+        return 300  # 5 minutes
+
+    return 600  # 10 minutes
+
 if __name__ == "__main__":
     print("Alert system starting. To configure, set environment variables:")
-    print("DISCORD_IN_RADIUS_WEBHOOK_URL, DISCORD_LANDING_WEBHOOK_URL, USER_LAT, USER_LON, ALERT_RADIUS_KM, LANDING_ALERT_RADIUS_KM")
-    while True:
-        print("\nChecking for sondes...")
-        check_sonde_positions_and_predictions()
-        print(f"Check complete. Waiting for 5 minutes. Currently tracking {len(sondes_alerted)} sondes and {len(landings_alerted)} landings.")
-        time.sleep(300)
+    print("DISCORD_LANDING_WEBHOOK_URL, USER_LAT, USER_LON, LANDING_ALERT_RADIUS_KM")
+    try:
+        while True:
+            print("\nChecking for sondes...")
+            check_sonde_positions_and_predictions()
+            sleep_duration = get_sleep_duration()
+            print(f"Check complete. Waiting for {sleep_duration // 60} minutes. Currently tracking {len(sondes_alerted)} sondes and {len(landings_alerted)} landings.")
+            time.sleep(sleep_duration)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
