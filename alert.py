@@ -14,6 +14,8 @@ DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://
 # User location and radius
 USER_LAT = float(os.getenv("USER_LAT", "60.921800"))
 USER_LON = float(os.getenv("USER_LON", "25.66003"))
+LANDING_ALERT_RADIUS_KM = int(os.getenv("LANDING_ALERT_RADIUS_KM", "50"))
+USER_LOCATION = {"lat": USER_LAT, "lon": USER_LON}
 
 STATE_FILE = "alert_state.json"
 
@@ -116,7 +118,14 @@ def check_sonde_positions_and_predictions():
                                 ],
                                 "footer": {"text": f"Alert generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"}
                             }
-                            send_discord_alert(DISCORD_LANDING_WEBHOOK_URL, embed, content=f"<@&1446621625742004264>")
+
+                            # Add role mention only at or after 04:00 UTC
+                            now_utc = datetime.utcnow()
+                            content = None
+                            if now_utc.hour >= 4:
+                                content = f"<@&1446621625742004264>"
+
+                            send_discord_alert(DISCORD_LANDING_WEBHOOK_URL, embed, content=content)
                             landings_alerted.add(vehicle)
 
     except requests.exceptions.RequestException as e:
