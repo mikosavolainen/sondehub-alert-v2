@@ -147,9 +147,12 @@ def get_sleep_duration():
 if __name__ == "__main__":
     print("Alert system starting. To configure, set environment variables:")
     print("DISCORD_LANDING_WEBHOOK_URL, USER_LAT, USER_LON, LANDING_ALERT_RADIUS_KM")
-    while True:
-        print("\nChecking for sondes...")
-        check_sonde_positions_and_predictions()
-        sleep_duration = get_sleep_duration()
-        print(f"Check complete. Waiting for {sleep_duration // 60} minutes. Currently tracking {len(sondes_alerted)} sondes and {len(landings_alerted)} landings.")
-        time.sleep(sleep_duration)
+    try:
+        while True:
+            print("\nChecking for sondes...")
+            check_sonde_positions_and_predictions()
+            sleep_duration = get_sleep_duration()
+            print(f"Check complete. Waiting for {sleep_duration // 60} minutes. Currently tracking {len(sondes_alerted)} sondes and {len(landings_alerted)} landings.")
+            time.sleep(sleep_duration)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
