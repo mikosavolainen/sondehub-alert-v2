@@ -47,7 +47,7 @@ def save_alert_state(sondes_alerted, landings_alerted):
 sondes_alerted, landings_alerted = load_alert_state()
 
 # --- Core Functions ---
-def send_discord_alert(webhook_url, embed):
+def send_discord_alert(webhook_url, embed, content=None):
     """Sends a styled message with an embed to a Discord webhook."""
     if "YOUR_WEBHOOK_URL" in webhook_url:
         print(f"Webhook URL not configured. Printing alert to console for webhook: {webhook_url}")
@@ -55,6 +55,8 @@ def send_discord_alert(webhook_url, embed):
         return
 
     payload = {"embeds": [embed]}
+    if content:
+        payload["content"] = content
     headers = {"Content-Type": "application/json"}
     try:
         response = requests.post(webhook_url, data=json.dumps(payload), headers=headers, timeout=10)
@@ -136,7 +138,7 @@ def check_sonde_positions_and_predictions():
                                 ],
                                 "footer": {"text": f"Alert generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"}
                             }
-                            send_discord_alert(DISCORD_LANDING_WEBHOOK_URL, embed)
+                            send_discord_alert(DISCORD_LANDING_WEBHOOK_URL, embed, content=f"<@&1446621625742004264>")
                             landings_alerted.add(vehicle)
 
     except requests.exceptions.RequestException as e:
@@ -146,11 +148,28 @@ def check_sonde_positions_and_predictions():
     finally:
         save_alert_state(sondes_alerted, landings_alerted)
 
+def get_sleep_duration():
+    """Determines the sleep duration based on the current UTC time."""
+    now_utc = datetime.utcnow()
+    minute = now_utc.minute
+    hour = now_utc.hour
+
+    # Check for windows around 00:00, 06:00, and 12:00 UTC
+    if (hour == 23 and minute >= 30) or (hour == 0 and minute < 30):  # 23:30 - 00:30
+        return 300  # 5 minutes
+    if (hour == 5 and minute >= 30) or (hour == 6 and minute < 30):   # 05:30 - 06:30
+        return 300  # 5 minutes
+    if (hour == 11 and minute >= 30) or (hour == 12 and minute < 30): # 11:30 - 12:30
+        return 300  # 5 minutes
+
+    return 600  # 10 minutes
+
 if __name__ == "__main__":
     print("Alert system starting. To configure, set environment variables:")
     print("DISCORD_IN_RADIUS_WEBHOOK_URL, DISCORD_LANDING_WEBHOOK_URL, USER_LAT, USER_LON, ALERT_RADIUS_KM, LANDING_ALERT_RADIUS_KM")
     while True:
         print("\nChecking for sondes...")
         check_sonde_positions_and_predictions()
-        print(f"Check complete. Waiting for 5 minutes. Currently tracking {len(sondes_alerted)} sondes and {len(landings_alerted)} landings.")
-        time.sleep(300)
+        sleep_duration = get_sleep_duration()
+        print(f"Check complete. Waiting for {sleep_duration // 60} minutes. Currently tracking {len(sondes_alerted)} sondes and {len(landings_alerted)} landings.")
+        time.sleep(sleep_duration)
