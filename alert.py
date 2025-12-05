@@ -9,7 +9,7 @@ from math import radians, sin, cos, sqrt, atan2
 SONDE_API_URL = "https://api.v2.sondehub.org/sondes"
 PREDICTION_API_URL = "https://api.v2.sondehub.org/predictions?vehicles="
 # Webhook for predicted landings in the radius
-DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1437914417894522904/ORMPEbaV3evz4AtsjlrckT3VbAhYJGuf_vV7aBPMuyUP9J3U63tKktCgbr-zFoJplfF1")
+DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1446618700420743411/KMHJeyW3PoByB1JwqT05moVc2KXr61ywGXLp3EvzOSL4a2n1Q4HVaNR4iFTfregdxCZ4")
 
 # User location and radius
 USER_LAT = float(os.getenv("USER_LAT", "60.921800"))
