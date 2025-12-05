@@ -2,7 +2,7 @@ import requests
 import json
 import time
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from math import radians, sin, cos, sqrt, atan2
 
 # --- Configuration ---
@@ -116,11 +116,11 @@ def check_sonde_positions_and_predictions():
                                     {"name": "Predicted Landing", "value": f"{landing_point['lat']:.4f}, {landing_point['lon']:.4f}", "inline": False},
                                     {"name": "Tracker Link", "value": f"[View on SondeHub](https://sondehub.org/{vehicle})", "inline": False}
                                 ],
-                                "footer": {"text": f"Alert generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"}
+                                "footer": {"text": f"Alert generated at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}"}
                             }
 
                             # Add role mention only at or after 04:00 UTC
-                            now_utc = datetime.utcnow()
+                            now_utc = datetime.now(UTC)
                             content = None
                             if now_utc.hour >= 4:
                                 content = f"<@&1446621625742004264>"
@@ -137,7 +137,7 @@ def check_sonde_positions_and_predictions():
 
 def get_sleep_duration():
     """Determines the sleep duration based on the current UTC time."""
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(UTC)
     minute = now_utc.minute
     hour = now_utc.hour
 
