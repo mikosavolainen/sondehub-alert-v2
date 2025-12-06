@@ -8,8 +8,9 @@ from math import radians, sin, cos, sqrt, atan2
 # --- Configuration ---
 SONDE_API_URL = "https://api.v2.sondehub.org/sondes"
 PREDICTION_API_URL = "https://api.v2.sondehub.org/predictions?vehicles="
-# Webhook for predicted landings in the radius
-DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1446618700420743411/KMHJeyW3PoByB1JwqT05moVc2KXr61ywGXLp3EvzOSL4a2n1Q4HVaNR4iFTfregdxCZ4")
+# Discord configuration
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
 
 # User location and radius
 USER_LAT = float(os.getenv("USER_LAT", "60.921800"))
@@ -54,33 +55,37 @@ def save_alert_state(sondes_alerted, landings_alerted):
 sondes_alerted, landings_alerted = load_alert_state()
 
 # --- Core Functions ---
-def send_discord_alert(webhook_url, embed, content=None):
-    """Sends a styled message with an embed to a Discord webhook."""
-    if "YOUR_WEBHOOK_URL" in webhook_url:
-        print(f"Webhook URL not configured. Printing alert to console for webhook: {webhook_url}")
+def send_discord_message(embed, content=None):
+    """Sends a message to a Discord channel using the bot token."""
+    if not DISCORD_BOT_TOKEN or not DISCORD_CHANNEL_ID:
+        print("Discord bot token or channel ID not configured. Printing alert to console.")
         print(json.dumps(embed, indent=2))
         return None
 
+    url = f"https://discord.com/api/v10/channels/{DISCORD_CHANNEL_ID}/messages"
+    headers = {
+        "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+        "Content-Type": "application/json"
+    }
     payload = {"embeds": [embed]}
     if content:
         payload["content"] = content
-    headers = {"Content-Type": "application/json"}
+
     try:
-        response = requests.post(f"{webhook_url}?wait=true", data=json.dumps(payload), headers=headers, timeout=10)
+        response = requests.post(url, data=json.dumps(payload), headers=headers, timeout=10)
         if response.status_code == 200:
-            print("Discord alert sent successfully.")
+            print("Discord message sent successfully.")
             message_data = response.json()
             return message_data.get("id"), message_data.get("channel_id")
         else:
-            print(f"Failed to send Discord alert. Status code: {response.status_code}, Response: {response.text}")
+            print(f"Failed to send Discord message. Status code: {response.status_code}, Response: {response.text}")
             return None
     except requests.exceptions.RequestException as e:
-        print(f"Error sending Discord alert: {e}")
+        print(f"Error sending Discord message: {e}")
         return None
 
 def add_discord_reaction(channel_id, message_id, emoji):
     """Adds a reaction to a specific Discord message."""
-    DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
     if not DISCORD_BOT_TOKEN:
         print("Discord bot token not configured. Cannot add reactions.")
         return
@@ -187,7 +192,7 @@ def check_sonde_positions_and_predictions():
                             if now_utc.hour >= 4:
                                 content = f"<@&1446621625742004264>"
 
-                            message_info = send_discord_alert(DISCORD_LANDING_WEBHOOK_URL, embed, content=content)
+                            message_info = send_discord_message(embed, content=content)
                             if message_info:
                                 landings_alerted[vehicle] = {
                                     "message_id": message_info[0],
@@ -221,7 +226,7 @@ def get_sleep_duration():
 
 if __name__ == "__main__":
     print("Alert system starting. To configure, set environment variables:")
-    print("DISCORD_LANDING_WEBHOOK_URL, USER_LAT, USER_LON, LANDING_ALERT_RADIUS_KM")
+    print("DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID, USER_LAT, USER_LON, LANDING_ALERT_RADIUS_KM")
     try:
         while True:
             print("\nChecking for sondes...")
