@@ -153,9 +153,9 @@ def check_burst_timers(sondes, landings_alerted):
             if hours_silent > data["burst_timer"]:
                 landings_alerted[serial]["burst_timer"] = hours_silent
                 emoji_map = {
-                    1: "1%E2%83%A3", 2: "2%E2%83%A3", 3: "3%E2%83%A3",
-                    4: "4%E2%83%A3", 5: "5%E2%83%A3", 6: "6%E2%83%A3",
-                    7: "7%E2%83%A3", 8: "8%E2%83%A3", 9: "9%E2%83%A3"
+                    1: "%31%EF%B8%8F%E2%83%A3", 2: "%32%EF%B8%8F%E2%83%A3", 3: "%33%EF%B8%8F%E2%83%A3",
+                    4: "%34%EF%B8%8F%E2%83%A3", 5: "%35%EF%B8%8F%E2%83%A3", 6: "%36%EF%B8%8F%E2%83%A3",
+                    7: "%37%EF%B8%8F%E2%83%A3", 8: "%38%EF%B8%8F%E2%83%A3", 9: "%39%EF%B8%8F%E2%83%A3"
                 }
                 emoji = emoji_map.get(hours_silent)
                 if emoji:
@@ -210,9 +210,9 @@ def check_sonde_positions_and_predictions():
                     if hour_floor != landings_alerted[serial]["last_hour_reaction"]:
                         landings_alerted[serial]["last_hour_reaction"] = hour_floor
                         emoji_map = {
-                            1: "1%E2%83%A3", 2: "2%E2%83%A3", 3: "3%E2%83%A3",
-                            4: "4%E2%83%A3", 5: "5%E2%83%A3", 6: "6%E2%83%A3",
-                            7: "7%E2%83%A3", 8: "8%E2%83%A3", 9: "9%E2%83%A3"
+                            1: "%31%EF%B8%8F%E2%83%A3", 2: "%32%EF%B8%8F%E2%83%A3", 3: "%33%EF%B8%8F%E2%83%A3",
+                            4: "%34%EF%B8%8F%E2%83%A3", 5: "%35%EF%B8%8F%E2%83%A3", 6: "%36%EF%B8%8F%E2%83%A3",
+                            7: "%37%EF%B8%8F%E2%83%A3", 8: "%38%EF%B8%8F%E2%83%A3", 9: "%39%EF%B8%8F%E2%83%A3"
                         }
                         emoji = emoji_map.get(hour_floor)
                         if emoji:
@@ -262,7 +262,8 @@ def check_sonde_positions_and_predictions():
                                     "message_id": message_info[0],
                                     "channel_id": message_info[1],
                                     "last_seen": datetime.now(timezone.utc).timestamp(),
-                                    "burst_timer": 0
+                                    "burst_timer": 0,
+                                    "last_hour_reaction": -1
                                 }
 
     except requests.exceptions.RequestException as e:
