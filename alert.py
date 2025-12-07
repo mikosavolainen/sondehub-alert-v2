@@ -136,6 +136,31 @@ def calculate_remaining_time(sonde, site):
     remaining_hours = remaining_seconds / 3600
 
     return remaining_hours
+def check_burst_timers(sondes, landings_alerted):
+    """Checks for sondes that have stopped transmitting and adds a reaction."""
+    now = datetime.now(UTC).timestamp()
+    active_serials = {sonde['vehicle'] for sonde in sondes if 'vehicle' in sonde}
+
+    for serial, data in list(landings_alerted.items()):
+        if serial in active_serials:
+            # Sonde is still transmitting, update last_seen
+            landings_alerted[serial]["last_seen"] = now
+        else:
+            # Sonde is not in the active list
+            time_since_last_seen = now - data["last_seen"]
+            hours_silent = int(time_since_last_seen // 3600)
+
+            if hours_silent > data["burst_timer"]:
+                landings_alerted[serial]["burst_timer"] = hours_silent
+                emoji_map = {
+                    1: "1%E2%83%A3", 2: "2%E2%83%A3", 3: "3%E2%83%A3",
+                    4: "4%E2%83%A3", 5: "5%E2%83%A3", 6: "6%E2%83%A3",
+                    7: "7%E2%83%A3", 8: "8%E2%83%A3", 9: "9%E2%83%A3"
+                }
+                emoji = emoji_map.get(hours_silent)
+                if emoji:
+                    add_discord_reaction(data["channel_id"], data["message_id"], emoji)
+
 
 def haversine(lat1, lon1, lat2, lon2):
     """Calculates the distance between two points on Earth."""
@@ -154,6 +179,10 @@ def check_sonde_positions_and_predictions():
         response = requests.get(SONDE_API_URL)
         response.raise_for_status()
         sondes = response.json()
+
+        # Check burst timers for alerted landings
+        check_burst_timers(sondes, landings_alerted)
+
         serials_to_check = []
 
         # Check for unrecovered sondes
@@ -232,7 +261,8 @@ def check_sonde_positions_and_predictions():
                                 landings_alerted[vehicle] = {
                                     "message_id": message_info[0],
                                     "channel_id": message_info[1],
-                                    "last_hour_reaction": -1
+                                    "last_seen": datetime.now(UTC).timestamp(),
+                                    "burst_timer": 0
                                 }
 
     except requests.exceptions.RequestException as e:
