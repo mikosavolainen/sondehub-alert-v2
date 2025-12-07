@@ -2,12 +2,13 @@ import requests
 import json
 import time
 import os
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from math import radians, sin, cos, sqrt, atan2
 
 # --- Configuration ---
 SONDE_API_URL = "https://api.v2.sondehub.org/sondes"
 PREDICTION_API_URL = "https://api.v2.sondehub.org/predictions?vehicles="
+SITES_API_URL = "https://api.v2.sondehub.org/sites"
 # Webhook for predicted landings in the radius
 DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1446618700420743411/KMHJeyW3PoByB1JwqT05moVc2KXr61ywGXLp3EvzOSL4a2n1Q4HVaNR4iFTfregdxCZ4")
 
@@ -52,8 +53,22 @@ def save_alert_state(sondes_alerted, landings_alerted):
         print(f"Error saving state file: {e}")
 
 sondes_alerted, landings_alerted = load_alert_state()
+sites_data = None
 
 # --- Core Functions ---
+def get_sites_data():
+    """Fetches and caches the sites data from the SondeHub API."""
+    global sites_data
+    if sites_data is None:
+        try:
+            response = requests.get(SITES_API_URL)
+            response.raise_for_status()
+            sites_data = response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching sites data: {e}")
+            sites_data = {}
+    return sites_data
+
 def send_discord_alert(webhook_url, embed, content=None):
     """Sends a styled message with an embed to a Discord webhook."""
     if "YOUR_WEBHOOK_URL" in webhook_url:
@@ -96,6 +111,31 @@ def add_discord_reaction(channel_id, message_id, emoji):
     except requests.exceptions.RequestException as e:
         print(f"Error adding reaction: {e}")
 
+def calculate_remaining_time(sonde, site):
+    """Calculates the remaining time until the sonde bursts."""
+    if not site or 'burst_altitude' not in site or 'ascent_rate' not in site:
+        return None
+
+    burst_altitude = site['burst_altitude']
+    ascent_rate = site['ascent_rate']
+
+    if ascent_rate <= 0:
+        return None
+
+    time_to_burst_seconds = burst_altitude / ascent_rate
+
+    launch_time_str = sonde.get("datetime")
+    if not launch_time_str:
+        return None
+
+    launch_time = datetime.fromisoformat(launch_time_str.replace('Z', '+00:00'))
+
+    time_since_launch = (datetime.now(timezone.utc) - launch_time).total_seconds()
+
+    remaining_seconds = time_to_burst_seconds - time_since_launch
+    remaining_hours = remaining_seconds / 3600
+
+    return remaining_hours
 def check_burst_timers(sondes, landings_alerted):
     """Checks for sondes that have stopped transmitting and adds a reaction."""
     now = datetime.now(UTC).timestamp()
@@ -134,6 +174,7 @@ def haversine(lat1, lon1, lat2, lon2):
 def check_sonde_positions_and_predictions():
     """Fetches sonde data, checks for positions and landing predictions, and sends alerts."""
     global sondes_alerted, landings_alerted
+    sites = get_sites_data()
     try:
         response = requests.get(SONDE_API_URL)
         response.raise_for_status()
@@ -145,9 +186,37 @@ def check_sonde_positions_and_predictions():
         serials_to_check = []
 
         # Check for unrecovered sondes
-        for serial, sonde_data in sondes.items():
-            if not serial or sonde_data.get("recovered", 0) != 0:
+        for sonde in sondes.values():
+            serial = sonde.get("serial")
+            if not serial or sonde.get("recovered", 0) != 0:
                 continue
+
+            # Find the nearest site
+            min_dist = float('inf')
+            nearest_site = None
+            if 'lat' in sonde and 'lon' in sonde:
+                for site_id, site_data in sites.items():
+                    if 'position' in site_data and len(site_data['position']) == 2:
+                        dist = haversine(sonde['lat'], sonde['lon'], site_data['position'][1], site_data['position'][0])
+                        if dist < min_dist:
+                            min_dist = dist
+                            nearest_site = site_id
+
+            # Now you have the nearest_site, you can use it to get burst_altitude and ascent_rate
+            if nearest_site and nearest_site in sites:
+                remaining_hours = calculate_remaining_time(sonde, sites[nearest_site])
+                if remaining_hours is not None and serial in landings_alerted:
+                    hour_floor = int(remaining_hours)
+                    if hour_floor != landings_alerted[serial]["last_hour_reaction"]:
+                        landings_alerted[serial]["last_hour_reaction"] = hour_floor
+                        emoji_map = {
+                            1: "1%E2%83%A3", 2: "2%E2%83%A3", 3: "3%E2%83%A3",
+                            4: "4%E2%83%A3", 5: "5%E2%83%A3", 6: "6%E2%83%A3",
+                            7: "7%E2%83%A3", 8: "8%E2%83%A3", 9: "9%E2%83%A3"
+                        }
+                        emoji = emoji_map.get(hour_floor)
+                        if emoji:
+                            add_discord_reaction(landings_alerted[serial]["channel_id"], landings_alerted[serial]["message_id"], emoji)
 
             serials_to_check.append(serial)
 
@@ -178,11 +247,11 @@ def check_sonde_positions_and_predictions():
                                     {"name": "Predicted Landing", "value": f"{landing_point['lat']:.4f}, {landing_point['lon']:.4f}", "inline": False},
                                     {"name": "Tracker Link", "value": f"[View on SondeHub](https://sondehub.org/{vehicle})", "inline": False}
                                 ],
-                                "footer": {"text": f"Alert generated at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}"}
+                                "footer": {"text": f"Alert generated at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"}
                             }
 
                             # Add role mention only at or after 04:00 UTC
-                            now_utc = datetime.now(UTC)
+                            now_utc = datetime.now(timezone.utc)
                             content = None
                             if now_utc.hour >= 4:
                                 content = f"<@&1446621625742004264>"
@@ -205,7 +274,7 @@ def check_sonde_positions_and_predictions():
 
 def get_sleep_duration():
     """Determines the sleep duration based on the current UTC time."""
-    now_utc = datetime.now(UTC)
+    now_utc = datetime.now(timezone.utc)
     minute = now_utc.minute
     hour = now_utc.hour
 
