@@ -138,7 +138,7 @@ def calculate_remaining_time(sonde, site):
     return remaining_hours
 def check_burst_timers(sondes, landings_alerted):
     """Checks for sondes that have stopped transmitting and adds a reaction."""
-    now = datetime.now(UTC).timestamp()
+    now = datetime.now(timezone.utc).timestamp()
     active_serials = {sonde['vehicle'] for sonde in sondes if 'vehicle' in sonde}
 
     for serial, data in list(landings_alerted.items()):
@@ -261,7 +261,7 @@ def check_sonde_positions_and_predictions():
                                 landings_alerted[vehicle] = {
                                     "message_id": message_info[0],
                                     "channel_id": message_info[1],
-                                    "last_seen": datetime.now(UTC).timestamp(),
+                                    "last_seen": datetime.now(timezone.utc).timestamp(),
                                     "burst_timer": 0
                                 }
 
