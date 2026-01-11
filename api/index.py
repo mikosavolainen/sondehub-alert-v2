@@ -1,9 +1,13 @@
+from flask import Flask, request
 import requests
 import json
-import time
 import os
 from datetime import datetime, timezone
 from math import radians, sin, cos, sqrt, atan2
+from vercel_kv_sdk import KV
+
+app = Flask(__name__)
+kv = KV()
 
 # --- Configuration ---
 SONDE_API_URL = "https://api.v2.sondehub.org/sondes"
@@ -18,41 +22,29 @@ USER_LON = float(os.getenv("USER_LON", "25.66003"))
 LANDING_ALERT_RADIUS_KM = int(os.getenv("LANDING_ALERT_RADIUS_KM", "40000000"))
 USER_LOCATION = {"lat": USER_LAT, "lon": USER_LON}
 
-STATE_FILE = "alert_state.json"
-
 # --- State Management ---
 def load_alert_state():
-    """Loads the alerted sondes from a file, handling legacy format."""
-    if not os.path.exists(STATE_FILE):
+    """Loads the alerted sondes from Vercel KV."""
+    state = kv.get("alert_state")
+    if state is None:
         return set(), {}
-    try:
-        with open(STATE_FILE, "r") as f:
-            state = json.load(f)
-            sondes_alerted = set(state.get("sondes_alerted", []))
-            landings_alerted_data = state.get("landings_alerted", {})
 
-            # Handle migration from old list format to new dict format
-            if isinstance(landings_alerted_data, list):
-                print("Old 'landings_alerted' format detected in state file. Starting fresh for landing alerts.")
-                landings_alerted = {}
-            else:
-                landings_alerted = landings_alerted_data
+    sondes_alerted = set(state.get("sondes_alerted", []))
+    landings_alerted_data = state.get("landings_alerted", {})
 
-            return sondes_alerted, landings_alerted
-    except (json.JSONDecodeError, IOError) as e:
-        print(f"Could not load state file, starting fresh: {e}")
-        return set(), {}
+    if isinstance(landings_alerted_data, list):
+        print("Old 'landings_alerted' format detected in state file. Starting fresh for landing alerts.")
+        landings_alerted = {}
+    else:
+        landings_alerted = landings_alerted_data
+
+    return sondes_alerted, landings_alerted
 
 def save_alert_state(sondes_alerted, landings_alerted):
-    """Saves the alerted sondes to a file."""
-    try:
-        with open(STATE_FILE, "w") as f:
-            state = {"sondes_alerted": list(sondes_alerted), "landings_alerted": landings_alerted}
-            json.dump(state, f)
-    except IOError as e:
-        print(f"Error saving state file: {e}")
+    """Saves the alerted sondes to Vercel KV."""
+    state = {"sondes_alerted": list(sondes_alerted), "landings_alerted": landings_alerted}
+    kv.set("alert_state", state)
 
-sondes_alerted, landings_alerted = load_alert_state()
 sites_data = None
 
 # --- Core Functions ---
@@ -173,7 +165,7 @@ def haversine(lat1, lon1, lat2, lon2):
 
 def check_sonde_positions_and_predictions():
     """Fetches sonde data, checks for positions and landing predictions, and sends alerts."""
-    global sondes_alerted, landings_alerted
+    sondes_alerted, landings_alerted = load_alert_state()
     sites = get_sites_data()
     try:
         response = requests.get(SONDE_API_URL)
@@ -273,31 +265,9 @@ def check_sonde_positions_and_predictions():
     finally:
         save_alert_state(sondes_alerted, landings_alerted)
 
-def get_sleep_duration():
-    """Determines the sleep duration based on the current UTC time."""
-    now_utc = datetime.now(timezone.utc)
-    minute = now_utc.minute
-    hour = now_utc.hour
-
-    # Check for windows around 00:00, 06:00, and 12:00 UTC
-    if (hour == 23 and minute >= 30) or (hour == 0 and minute < 30):  # 23:30 - 00:30
-        return 300  # 5 minutes
-    if (hour == 5 and minute >= 30) or (hour == 6 and minute < 30):   # 05:30 - 06:30
-        return 300  # 5 minutes
-    if (hour == 11 and minute >= 30) or (hour == 12 and minute < 30): # 11:30 - 12:30
-        return 300  # 5 minutes
-
-    return 600  # 10 minutes
-
-if __name__ == "__main__":
-    print("Alert system starting. To configure, set environment variables:")
-    print("DISCORD_LANDING_WEBHOOK_URL, USER_LAT, USER_LON, LANDING_ALERT_RADIUS_KM")
-    try:
-        while True:
-            print("\nChecking for sondes...")
-            check_sonde_positions_and_predictions()
-            sleep_duration = get_sleep_duration()
-            print(f"Check complete. Waiting for {sleep_duration // 60} minutes. Currently tracking {len(sondes_alerted)} sondes and {len(landings_alerted)} landings.")
-            time.sleep(sleep_duration)
-    except KeyboardInterrupt:
-        print("\nShutting down...")
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'])
+def catch_all(path):
+    # This will be the entry point for the cron job
+    check_sonde_positions_and_predictions()
+    return "Sonde check complete."
