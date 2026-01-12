@@ -1,0 +1,14 @@
+{
+  "name": "sondehub-alert-v2",
+  "version": "1.0.0",
+  "description": "Sondehub Alert V2 in Node.js",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^0.21.1"
+  },
+  "author": "",
+  "license": "ISC"
+}
