@@ -6,7 +6,7 @@ const path = require('path');
 const SONDE_API_URL = "https://api.v2.sondehub.org/sondes";
 const PREDICTION_API_URL = "https://api.v2.sondehub.org/predictions?vehicles=";
 const SITES_API_URL = "https://api.v2.sondehub.org/sites";
-const DISCORD_LANDING_WEBHOOK_URL = process.env.DISCORD_LANDING_WEBHOOK_URL || "https://discordapp.com/api/webhooks/1446618700420743411/KMHJeyW3PoByB1JwqT05moVc2KXr61ywGXLp3EvzOSL4a2n1Q4HVaNR4iFTfregdxCZ4";
+const DISCORD_LANDING_WEBHOOK_URL = process.env.DISCORD_LANDING_WEBHOOK_URL || "YOUR_WEBHOOK_URL_HERE";
 
 const USER_LAT = parseFloat(process.env.USER_LAT || "60.921800");
 const USER_LON = parseFloat(process.env.USER_LON || "25.66003");
@@ -173,7 +173,7 @@ async function checkSondePositionsAndPredictions() {
         const serialsToCheck = [];
         for (const sonde of sondes) {
             const serial = sonde.serial;
-            if (!serial || sonde.recovered !== 0) continue;
+            if (!serial || sonde.recovered) continue;
 
             let nearestSite = null;
             if (sonde.lat && sonde.lon) {
