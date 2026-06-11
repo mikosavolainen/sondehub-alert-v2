@@ -1,0 +1,8 @@
+services:
+  sondehub-alert:
+    build: .
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
