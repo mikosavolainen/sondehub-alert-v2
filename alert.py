@@ -22,7 +22,7 @@ USER_LOCATION = {"lat": USER_LAT, "lon": USER_LON}
 # Most standard sondes (like Vaisala RS41) have a hardware auto-kill timer of ~8.5 hours (510 mins)
 SONDE_LIFESPAN_HOURS = float(os.getenv("SONDE_LIFESPAN_HOURS", "8.5"))
 
-STATE_FILE = "alert_state.json"
+STATE_FILE = os.getenv("STATE_FILE", "data/alert_state.json")
 
 # --- State Management ---
 def load_alert_state():
@@ -43,6 +43,8 @@ def load_alert_state():
 def save_alert_state(sondes_alerted):
     """Saves the alerted sondes to a file."""
     try:
+        if os.path.dirname(STATE_FILE):
+            os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         with open(STATE_FILE, "w") as f:
             json.dump({"sondes_alerted": list(sondes_alerted)}, f)
     except IOError as e:

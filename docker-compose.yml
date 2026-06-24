@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  sondehub-alert:
+    build: .
+    container_name: sondehub-alert
+    restart: always
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
