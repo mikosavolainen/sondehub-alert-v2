@@ -11,12 +11,12 @@ PREDICTION_API_URL = "https://api.v2.sondehub.org/predictions?vehicles="
 
 
 # Webhook for predicted landings in the radius
-DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1514763343796371637/DlBPQtH9jVLXThVRwfSMsyDBNoPUy4aTgnc0w8vQJAxXO9RuackVqvRa_yVhm_bryd9Q")
+DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1446618700420743411/KMHJeyW3PoByB1JwqT05moVc2KXr61ywGXLp3EvzOSL4a2n1Q4HVaNR4iFTfregdxCZ4")
 
 # User location and radius
 USER_LAT = float(os.getenv("USER_LAT", "60.921800"))
 USER_LON = float(os.getenv("USER_LON", "25.66003"))
-LANDING_ALERT_RADIUS_KM = int(os.getenv("LANDING_ALERT_RADIUS_KM", "40000000"))
+LANDING_ALERT_RADIUS_KM = int(os.getenv("LANDING_ALERT_RADIUS_KM", "40"))
 USER_LOCATION = {"lat": USER_LAT, "lon": USER_LON}
 
 # Most standard sondes (like Vaisala RS41) have a hardware auto-kill timer of ~8.5 hours (510 mins)
