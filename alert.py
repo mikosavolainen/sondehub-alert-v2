@@ -8,7 +8,7 @@ from math import radians, sin, cos, sqrt, atan2
 # --- Configuration ---
 SONDE_API_URL = "https://api.v2.sondehub.org/sondes"
 PREDICTION_API_URL = "https://api.v2.sondehub.org/predictions?vehicles="
-SITES_API_URL = "https://api.v2.sondehub.org/sites"
+
 
 # Webhook for predicted landings in the radius
 DISCORD_LANDING_WEBHOOK_URL = os.getenv("DISCORD_LANDING_WEBHOOK_URL", "https://discordapp.com/api/webhooks/1514763343796371637/DlBPQtH9jVLXThVRwfSMsyDBNoPUy4aTgnc0w8vQJAxXO9RuackVqvRa_yVhm_bryd9Q")
@@ -32,7 +32,6 @@ def load_alert_state():
     try:
         with open(STATE_FILE, "r") as f:
             state = json.load(f)
-            # Support migrating from old dict structures by extracting keys if needed
             if isinstance(state, dict):
                 return set(state.get("sondes_alerted", []))
             return set(state)
@@ -51,19 +50,6 @@ def save_alert_state(sondes_alerted):
 sondes_alerted = load_alert_state()
 sites_data = None
 
-# --- Core Functions ---
-def get_sites_data():
-    """Fetches and caches the sites data from the SondeHub API."""
-    global sites_data
-    if sites_data is None:
-        try:
-            response = requests.get(SITES_API_URL)
-            response.raise_for_status()
-            sites_data = response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching sites data: {e}")
-            sites_data = {}
-    return sites_data
 
 def send_discord_alert(webhook_url, embed, content=None):
     """Sends a styled message with an embed to a Discord webhook."""
@@ -88,32 +74,6 @@ def send_discord_alert(webhook_url, embed, content=None):
         print(f"Error sending Discord alert: {e}")
         return False
 
-def get_time_until_silent(launch_time_str, lifespan_hours=SONDE_LIFESPAN_HOURS):
-    """Estimates time remaining or time passed since the sonde's kill timer expired."""
-    if not launch_time_str:
-        return "Unknown"
-    try:
-        launch_time = datetime.fromisoformat(launch_time_str.replace('Z', '+00:00'))
-        estimated_death_time = launch_time + timedelta(hours=lifespan_hours)
-        now_utc = datetime.now(timezone.utc)
-        
-        remaining = estimated_death_time - now_utc
-        total_seconds = remaining.total_seconds()
-        
-        if total_seconds > 0:
-            # Timer is active, show remaining time
-            hours = int(total_seconds // 3600)
-            minutes = int((total_seconds % 3600) // 60)
-            return f"~{hours}h {minutes}m left"
-        else:
-            # Timer has expired, calculate how long ago
-            abs_seconds = abs(total_seconds)
-            hours = int(abs_seconds // 3600)
-            minutes = int((abs_seconds % 3600) // 60)
-            return f"Expired {hours}h {minutes}m ago"
-            
-    except ValueError:
-        return "Unknown"
 
 def haversine(lat1, lon1, lat2, lon2):
     """Calculates the distance between two points on Earth."""
@@ -123,6 +83,21 @@ def haversine(lat1, lon1, lat2, lon2):
     a = sin(dLat / 2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dLon / 2)**2
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
     return R * c
+
+def get_time_until_silent(launch_time_str, lifespan_hours=SONDE_LIFESPAN_HOURS):
+    """Estimates time remaining using Discord's dynamic timestamp format."""
+    if not launch_time_str:
+        return "Unknown"
+    try:
+        launch_time = datetime.fromisoformat(launch_time_str.replace('Z', '+00:00'))
+        estimated_death_time = launch_time + timedelta(hours=lifespan_hours)
+        
+        # Muutetaan Unix-aikaleimaksi sekunteina reaaliaikaista kelloa varten
+        timestamp = int(estimated_death_time.timestamp())
+        return f"<t:{timestamp}:R>"
+        
+    except ValueError:
+        return "Unknown"
 
 def check_sonde_positions_and_predictions():
     """Fetches sonde data, checks landing predictions, and sends webhook alerts."""
@@ -162,21 +137,36 @@ def check_sonde_positions_and_predictions():
                         distance = haversine(USER_LOCATION["lat"], USER_LOCATION["lon"], landing_point["lat"], landing_point["lon"])
                         
                         if distance <= LANDING_ALERT_RADIUS_KM:
-                            # Pull data from active sonde profile to check its launch time
+                            # Pull data from active sonde profile
                             target_sonde = next((s for s in sondes_list if s.get("serial") == vehicle), {})
+                            
+                            # Reaaliaikainen alaspäin laskeva kello lähetysajalle (8.5h laukaisusta)
                             time_left_str = get_time_until_silent(target_sonde.get("datetime"))
+                            
+                            # Haetaan sonden malli (käytetään tarkempaa subtypea jos löytyy, muuten type)
+                            sonde_model = target_sonde.get("subtype") or target_sonde.get("type") or "Tuntematon"
+                            
+                            # Fetch and format Frequency
+                            freq = target_sonde.get("frequency", "Unknown")
+                            if isinstance(freq, (int, float)):
+                                freq_str = f"{freq:.3f} MHz"
+                            else:
+                                freq_str = str(freq)
 
+                            # --- DISCORD-EMBED ---
                             embed = {
-                                "title": "Predicted Landing Alert",
-                                "description": f"Predicted landing for sonde `{vehicle}` is **{distance:.2f} km** away.",
-                                "color": 3447003,  # Blue
+                                "title": "Ennustettu laskeutumishälytys",
+                                "description": f"Sondin `{vehicle}` ennustettu laskeutumispaikka on **{distance:.2f} km** etäisyydellä.",
+                                "color": 3447003,  # Sininen
                                 "fields": [
-                                    {"name": "Serial", "value": vehicle, "inline": True},
-                                    {"name": "Transmission Remaining", "value": f"`{time_left_str}`", "inline": True},
-                                    {"name": "Predicted Landing", "value": f"{landing_point['lat']:.4f}, {landing_point['lon']:.4f}", "inline": False},
-                                    {"name": "Tracker Link", "value": f"[View on SondeHub](https://sondehub.org/{vehicle})", "inline": False}
+                                    {"name": "Sarjanumero", "value": vehicle, "inline": True},
+                                    {"name": "Malli", "value": sonde_model, "inline": True},
+                                    {"name": "Taajuus", "value": freq_str, "inline": True},
+                                    {"name": "Data lähetys loppuu", "value": time_left_str, "inline": False},
+                                    {"name": "Ennustettu laskeutumispaikka", "value": f"{landing_point['lat']:.4f}, {landing_point['lon']:.4f}", "inline": False},
+                                    {"name": "Seurantalinkki", "value": f"[Näytä SondeHubissa](https://sondehub.org/{vehicle})", "inline": False}
                                 ],
-                                "footer": {"text": f"Alert generated at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"}
+                                "footer": {"text": f"Hälytys luotu: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"}
                             }
 
                             # Mentions a role if alert falls on or after 04:00 UTC
